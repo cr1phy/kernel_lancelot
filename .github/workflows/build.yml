@@ -1,0 +1,62 @@
+name: build-lancelot-nethunter
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: kali
+
+      - name: Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev make \
+            zip unzip cpio device-tree-compiler python2 python-is-python2
+
+      - name: Toolchain
+        run: |
+          mkdir -p tc/clang
+          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz" \
+            | tar xz -C tc/clang
+          git clone --depth=1 -b lineage-18.1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 tc/gcc64
+          git clone --depth=1 -b lineage-18.1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 tc/gcc32
+
+      - name: Patch include paths
+        run: |
+          echo 'ccflags-y += -I$(srctree)/drivers/devfreq/' >> drivers/devfreq/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/mmc/host/mediatek/ComboA/' >> drivers/mmc/host/mediatek/ComboA/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/spm/common/mtk_idle_fs/' >> drivers/misc/mediatek/base/power/spm/common/mtk_idle_fs/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/ppm_v3/src/mach/mt6768/' >> drivers/misc/mediatek/base/power/ppm_v3/src/mach/mt6768/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/ccu/src/mt6768/' >> drivers/misc/mediatek/ccu/src/mt6768/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/swpm_v1/mt6768/' >> drivers/misc/mediatek/base/power/swpm_v1/mt6768/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/spm/mt6768/' >> drivers/misc/mediatek/base/power/spm/mt6768/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/battery/' >> drivers/power/supply/mediatek/battery/Makefile
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/' >> drivers/pinctrl/mediatek/Makefile
+          sed -i 's|^cpio=.*|cpio=cpio|' kernel/gen_kheaders.sh
+          chmod +x scripts/dtc/dtc_overlay
+
+      - name: Build
+        run: |
+          export PATH="$PWD/tc/clang/bin:$PWD/tc/gcc64/bin:$PWD/tc/gcc32/bin:$PATH"
+          make O=out ARCH=arm64 lancelot_defconfig
+          ./scripts/config --file out/.config --disable IKHEADERS
+          make -j$(nproc) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            KCFLAGS="-Wno-error" 2>&1 | tee build.log
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-out
+          path: |
+            out/arch/arm64/boot/Image.gz-dtb
+            build.log
