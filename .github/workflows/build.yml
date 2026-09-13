@@ -16,7 +16,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison flex libssl-dev libelf-dev make \
-            zip unzip cpio device-tree-compiler python2 python-is-python2
+            zip unzip cpio device-tree-compiler python2
+          sudo ln -sf /usr/bin/python2 /usr/local/bin/python
 
       - name: Toolchain
         run: |
