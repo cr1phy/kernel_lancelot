@@ -54,7 +54,37 @@ jobs:
             CROSS_COMPILE=aarch64-linux-android- \
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             KCFLAGS="-Wno-error" 2>&1 | tee build.log
-
+            
+      - name: Package AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 ak3
+          rm -f ak3/*.zip ak3/modules/* ak3/patch/* ak3/ramdisk/* 2>/dev/null || true
+          cp out/arch/arm64/boot/Image.gz-dtb ak3/
+          cat > ak3/anykernel.sh <<'EOF'
+          properties() { '
+          kernel.string=NetHunter lancelot
+          do.devicecheck=1
+          do.initd=0
+          do.kernel=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=lancelot
+          device.name2=galahad
+          device.name3=Redmi 9
+          supported.versions=
+          supported.patchlevels=
+          '; }
+          block=/dev/block/platform/bootdevice/by-name/boot;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+          . tools/ak3-core.sh;
+          write_boot;
+          EOF
+          cd ak3 && zip -r9 ../nethunter-lancelot.zip * -x .git/\*
+          
       - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,4 +92,5 @@ jobs:
           name: kernel-out
           path: |
             out/arch/arm64/boot/Image.gz-dtb
+            nethunter-lancelot.zip
             build.log
